@@ -1,0 +1,15 @@
+node_modules/
+out/
+.tools/
+.nstmp/
+.installtest/
+.testdata/
+.testnet*/
+.tmp/
+.smoke/
+shots/
+*.log
+*.pfx
+*.cer
+*.key
+release/
