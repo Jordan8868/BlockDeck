@@ -15,6 +15,7 @@ import type {
   LogEvent,
   ModInstallResult,
   ModSearchResult,
+  ModpackImportResult,
   ProgressEvent,
   RoomHostOptions,
   RoomJoinOptions,
@@ -52,6 +53,7 @@ export interface BlockDeckApi {
     update: (patch: Partial<LauncherSettings>) => Promise<LauncherSettings>
     chooseGameDir: () => Promise<string | null>
     chooseJava: () => Promise<string | null>
+    chooseBackground: () => Promise<string | null>
     openGameDir: () => Promise<void>
   }
   accounts: {
@@ -60,6 +62,8 @@ export interface BlockDeckApi {
     loginOffline: (name: string) => Promise<AccountState>
     remove: (id: string) => Promise<AccountState>
     setActive: (id: string) => Promise<AccountState>
+    applySkin: (id: string, model: 'classic' | 'slim') => Promise<AccountState>
+    clearSkin: (id: string) => Promise<AccountState>
   }
   versions: {
     manifest: (force?: boolean) => Promise<VersionManifest>
@@ -68,6 +72,7 @@ export interface BlockDeckApi {
     remove: (versionId: string) => Promise<void>
     loaders: (mcVersion: string, kind: LoaderKind) => Promise<LoaderOptions>
     installLoader: (request: LoaderInstallRequest, taskId: string) => Promise<{ versionId: string }>
+    importModpack: (baseVersionId: string | undefined, taskId: string) => Promise<ModpackImportResult>
     loaderInfo: () => Promise<LoaderInfo[]>
     openFolder: (versionId: string) => Promise<void>
   }
@@ -81,11 +86,13 @@ export interface BlockDeckApi {
       projectId: string,
       gameVersion: string,
       loader: string,
+      versionId: string | undefined,
       taskId: string
     ) => Promise<ModInstallResult>
-    installed: () => Promise<InstalledMod[]>
-    toggle: (fileName: string, enabled: boolean) => Promise<void>
-    remove: (fileName: string) => Promise<void>
+    installed: (versionId?: string) => Promise<InstalledMod[]>
+    toggle: (fileName: string, enabled: boolean, versionId?: string) => Promise<void>
+    remove: (fileName: string, versionId?: string) => Promise<void>
+    openFolder: (versionId?: string) => Promise<void>
   }
   servers: {
     list: () => Promise<SavedServer[]>

@@ -21,6 +21,7 @@ const api: BlockDeckApi = {
     update: (patch) => ipcRenderer.invoke('settings:update', patch),
     chooseGameDir: () => ipcRenderer.invoke('settings:chooseGameDir'),
     chooseJava: () => ipcRenderer.invoke('settings:chooseJava'),
+    chooseBackground: () => ipcRenderer.invoke('settings:chooseBackground'),
     openGameDir: () => ipcRenderer.invoke('settings:openGameDir')
   },
   accounts: {
@@ -28,7 +29,9 @@ const api: BlockDeckApi = {
     loginMicrosoft: () => ipcRenderer.invoke('accounts:loginMicrosoft'),
     loginOffline: (name) => ipcRenderer.invoke('accounts:loginOffline', name),
     remove: (id) => ipcRenderer.invoke('accounts:remove', id),
-    setActive: (id) => ipcRenderer.invoke('accounts:setActive', id)
+    setActive: (id) => ipcRenderer.invoke('accounts:setActive', id),
+    applySkin: (id, model) => ipcRenderer.invoke('accounts:applySkin', id, model),
+    clearSkin: (id) => ipcRenderer.invoke('accounts:clearSkin', id)
   },
   versions: {
     manifest: (force) => ipcRenderer.invoke('versions:manifest', force),
@@ -38,6 +41,8 @@ const api: BlockDeckApi = {
     loaders: (mcVersion, kind) => ipcRenderer.invoke('versions:loaders', mcVersion, kind),
     installLoader: (request, taskId) =>
       ipcRenderer.invoke('versions:installLoader', request, taskId),
+    importModpack: (baseVersionId, taskId) =>
+      ipcRenderer.invoke('versions:importModpack', baseVersionId, taskId),
     loaderInfo: () => ipcRenderer.invoke('versions:loaderInfo'),
     openFolder: (versionId) => ipcRenderer.invoke('versions:openFolder', versionId)
   },
@@ -47,11 +52,13 @@ const api: BlockDeckApi = {
   },
   mods: {
     search: (params) => ipcRenderer.invoke('mods:search', params),
-    install: (projectId, gameVersion, loader, taskId) =>
-      ipcRenderer.invoke('mods:install', projectId, gameVersion, loader, taskId),
-    installed: () => ipcRenderer.invoke('mods:installed'),
-    toggle: (fileName, enabled) => ipcRenderer.invoke('mods:toggle', fileName, enabled),
-    remove: (fileName) => ipcRenderer.invoke('mods:remove', fileName)
+    install: (projectId, gameVersion, loader, versionId, taskId) =>
+      ipcRenderer.invoke('mods:install', projectId, gameVersion, loader, versionId, taskId),
+    installed: (versionId) => ipcRenderer.invoke('mods:installed', versionId),
+    toggle: (fileName, enabled, versionId) =>
+      ipcRenderer.invoke('mods:toggle', fileName, enabled, versionId),
+    remove: (fileName, versionId) => ipcRenderer.invoke('mods:remove', fileName, versionId),
+    openFolder: (versionId) => ipcRenderer.invoke('mods:openFolder', versionId)
   },
   servers: {
     list: () => ipcRenderer.invoke('servers:list'),

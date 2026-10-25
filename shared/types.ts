@@ -1,5 +1,7 @@
 export type DownloadSource = 'auto' | 'official' | 'mirror'
 
+export type ThemeId = 'lime' | 'ocean' | 'sunset' | 'violet' | 'sakura' | 'mono'
+
 export interface LauncherSettings {
   gameDir: string
   javaPath: string
@@ -9,6 +11,13 @@ export interface LauncherSettings {
   maxConcurrent: number
   minimizeOnLaunch: boolean
   showSnapshots: boolean
+  /** Isolate saves, options, mods and logs per installed version. */
+  versionIsolation: boolean
+  theme: ThemeId
+  /** Optional data URL for a user-selected background image. */
+  customBackground: string
+  /** Dark overlay strength for the custom background, 0–0.9. */
+  backgroundDim: number
 }
 
 export type AccountType = 'microsoft' | 'offline'
@@ -19,6 +28,8 @@ export interface Account {
   name: string
   uuid: string
   skinUrl?: string
+  customSkin?: string
+  skinModel?: 'classic' | 'slim'
   accessToken?: string
   refreshToken?: string
   expiresAt?: number
@@ -32,6 +43,8 @@ export interface PublicAccount {
   name: string
   uuid: string
   skinUrl?: string
+  customSkin?: string
+  skinModel?: 'classic' | 'slim'
   expired?: boolean
   createdAt: number
 }
@@ -61,12 +74,18 @@ export type LoaderKind = 'vanilla' | 'fabric' | 'forge' | 'neoforge' | 'quilt'
 export interface InstalledVersion {
   id: string
   name: string
+  displayName?: string
   type: VersionType | 'modified'
   releaseTime?: string
   loader: LoaderKind
   baseVersion?: string
   loaderVersion?: string
   sizeBytes: number
+  isPack?: boolean
+  packName?: string
+  packVersion?: string
+  isolated?: boolean
+  parentVersionId?: string
 }
 
 export interface LoaderVersion {
@@ -74,6 +93,14 @@ export interface LoaderVersion {
   label: string
   stable: boolean
   mcVersion?: string
+}
+
+export interface ModpackImportResult {
+  versionId?: string
+  name?: string
+  format?: string
+  files?: number
+  canceled?: boolean
 }
 
 export interface LoaderOptions {

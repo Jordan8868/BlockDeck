@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FolderOpen,
   Heart,
+  Layers3,
   Loader2,
   PackageOpen,
   RefreshCw,
@@ -96,6 +97,10 @@ export function ModsPage(): React.JSX.Element {
   }, [selectedInstalled, installed])
 
   useEffect(() => {
+    void refreshMods(selectedInstalled?.id)
+  }, [selectedInstalled?.id, settings.versionIsolation, refreshMods])
+
+  useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 360)
     return () => window.clearTimeout(timer)
   }, [query])
@@ -144,13 +149,17 @@ export function ModsPage(): React.JSX.Element {
       toast('请先在版本库安装一个游戏版本', 'error')
       return
     }
+    if (settings.versionIsolation && !selectedInstalled) {
+      toast('版本隔离已开启，请先在版本库选择一个已安装版本', 'error')
+      return
+    }
     let localTaskId = ''
     const installedResult = await runTask(
       { title: `安装模组 ${mod.title}`, kind: 'mod' },
       (taskId) => {
         localTaskId = taskId
         setTaskMap((prev) => ({ ...prev, [mod.projectId]: taskId }))
-        return window.blockdeck.mods.install(mod.projectId, gameVersion, loader, taskId)
+        return window.blockdeck.mods.install(mod.projectId, gameVersion, loader, selectedInstalled?.id, taskId)
       }
     )
     setTaskMap((prev) => {
@@ -159,7 +168,7 @@ export function ModsPage(): React.JSX.Element {
       return next
     })
     if (installedResult) {
-      await refreshMods()
+      await refreshMods(selectedInstalled?.id)
       if (installedResult.installed.length > 1) {
         toast(`已同时安装 ${installedResult.installed.length} 个文件（含依赖）`, 'success')
       }
@@ -171,8 +180,8 @@ export function ModsPage(): React.JSX.Element {
   const toggle = async (mod: InstalledMod, enabled: boolean): Promise<void> => {
     setToggling(mod.fileName)
     try {
-      await window.blockdeck.mods.toggle(mod.fileName, enabled)
-      await refreshMods()
+      await window.blockdeck.mods.toggle(mod.fileName, enabled, selectedInstalled?.id)
+      await refreshMods(selectedInstalled?.id)
     } catch (err) {
       toast(cleanError(err), 'error')
     } finally {
@@ -183,8 +192,8 @@ export function ModsPage(): React.JSX.Element {
   const removeMod = async (): Promise<void> => {
     if (!deleteTarget) return
     try {
-      await window.blockdeck.mods.remove(deleteTarget.fileName)
-      await refreshMods()
+      await window.blockdeck.mods.remove(deleteTarget.fileName, selectedInstalled?.id)
+      await refreshMods(selectedInstalled?.id)
       toast('模组已删除', 'success')
     } catch (err) {
       toast(cleanError(err), 'error')
@@ -206,6 +215,12 @@ export function ModsPage(): React.JSX.Element {
         subtitle="自动匹配游戏版本与加载器，含依赖安装 · 文件直连 Modrinth"
         actions={
           <>
+            {(settings.versionIsolation || selectedInstalled?.isPack) && selectedInstalled ? (
+              <span className="source-pill instance-pill" title="存档与模组按版本独立存放">
+                <Layers3 size={14} />
+                独立实例
+              </span>
+            ) : null}
             <span className="source-pill">
               <Sparkles size={14} />
               {downloadSourceLabel(settings.downloadSource)}
@@ -213,7 +228,7 @@ export function ModsPage(): React.JSX.Element {
             <button
               className="icon-btn"
               title="打开模组目录"
-              onClick={() => void window.blockdeck.app.openPath(`${settings.gameDir}/mods`)}
+              onClick={() => void window.blockdeck.mods.openFolder(selectedInstalled?.id)}
             >
               <FolderOpen size={16} />
             </button>
@@ -236,7 +251,7 @@ export function ModsPage(): React.JSX.Element {
             <span className="mods-enabled-note">
               {enabledCount} / {installedCount} 已启用
             </span>
-            <button className="icon-btn" title="刷新" onClick={() => void refreshMods()}>
+            <button className="icon-btn" title="刷新" onClick={() => void refreshMods(selectedInstalled?.id)}>
               <RefreshCw size={15} />
             </button>
           </>
@@ -441,7 +456,7 @@ export function ModsPage(): React.JSX.Element {
             </div>
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => void window.blockdeck.app.openPath(`${settings.gameDir}/mods`)}
+              onClick={() => void window.blockdeck.mods.openFolder(selectedInstalled?.id)}
             >
               <FolderOpen size={14} /> 打开文件夹
             </button>

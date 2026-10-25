@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import type {
@@ -17,13 +17,14 @@ import type {
 import type { ModSearchParams } from '@shared/ipc'
 import { initPaths, getDataDir, getLogsDir } from './paths'
 import {
+  getAccount,
   getPublicAccountState,
   getSettings,
   removeAccount,
   setActiveAccount,
   updateSettings
 } from './store'
-import { loginMicrosoft, loginOffline } from './auth'
+import { clearLocalSkin, loginMicrosoft, loginOffline, saveLocalSkin, uploadMinecraftSkin } from './auth'
 import {
   deleteVersion,
   getManifest,
@@ -31,8 +32,9 @@ import {
   listInstalledVersions
 } from './minecraft'
 import { getLoaderOptions, installLoader } from './loaders'
+import { importModpack } from './modpacks'
 import { detectJavas, downloadJava } from './java'
-import { deleteMod, installMod, listInstalledMods, searchMods, toggleMod } from './mods'
+import { deleteMod, installMod, listInstalledMods, openModsDir, searchMods, toggleMod } from './mods'
 import { getRunningGame, isGameRunning, launchGame, stopGame } from './launch'
 import {
   addServer,
@@ -202,6 +204,28 @@ function registerIpc(): void {
     await updateSettings({ gameDir: dir })
     return dir
   })
+  ipcMain.handle('settings:chooseBackground', async (): Promise<string | null> => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: '选择启动器背景图片',
+      properties: ['openFile'],
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    const image = nativeImage.createFromPath(result.filePaths[0])
+    if (image.isEmpty()) throw new Error('无法读取这张图片')
+    const size = image.getSize()
+    const scale = Math.min(1, 2560 / size.width, 1440 / size.height)
+    const resized = scale < 1
+      ? image.resize({
+          width: Math.max(1, Math.round(size.width * scale)),
+          height: Math.max(1, Math.round(size.height * scale)),
+          quality: 'good'
+        })
+      : image
+    const jpeg = resized.toJPEG(86)
+    if (jpeg.length > 8 * 1024 * 1024) throw new Error('图片压缩后仍然过大，请换一张')
+    return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+  })
   ipcMain.handle('settings:chooseJava', async () => {
     const settings = await getSettings()
     const result = await dialog.showOpenDialog(mainWindow!, {
@@ -218,6 +242,42 @@ function registerIpc(): void {
     const settings = await getSettings()
     await ensureDir(settings.gameDir)
     await shell.openPath(settings.gameDir)
+  })
+
+  ipcMain.handle('accounts:applySkin', async (_event, id: string, model: 'classic' | 'slim') => {
+    const account = await getAccount(id)
+    if (!account) throw new Error('账户不存在')
+    const variant = model === 'slim' ? 'slim' : 'classic'
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: '选择 Minecraft 皮肤 PNG',
+      properties: ['openFile'],
+      filters: [{ name: 'Minecraft 皮肤', extensions: ['png'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return getPublicAccountState()
+    try {
+      const image = nativeImage.createFromPath(result.filePaths[0])
+      if (image.isEmpty()) throw new Error('无法读取这张图片')
+      const size = image.getSize()
+      if (!((size.width === 64 && size.height === 64) || (size.width === 64 && size.height === 32))) {
+        throw new Error('皮肤必须是 64×64 或 64×32 的 PNG')
+      }
+      const png = image.toPNG()
+      if (!png.length || png.length > 256 * 1024) throw new Error('皮肤文件不能超过 256 KB')
+      const dataUrl = `data:image/png;base64,${png.toString('base64')}`
+      if (account.type === 'microsoft') {
+        await uploadMinecraftSkin(id, dataUrl, png, variant)
+      } else {
+        await saveLocalSkin(id, dataUrl, variant)
+      }
+      return getPublicAccountState()
+    } catch (err) {
+      throw new Error(await errorMessage(err))
+    }
+  })
+
+  ipcMain.handle('accounts:clearSkin', async (_event, id: string) => {
+    await clearLocalSkin(id)
+    return getPublicAccountState()
   })
 
   ipcMain.handle('accounts:state', () => getPublicAccountState())
@@ -291,6 +351,25 @@ function registerIpc(): void {
       }
     }
   )
+  ipcMain.handle('versions:importModpack', async (_event, baseVersionId: string | undefined, taskId: string) => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: '导入整合包',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Minecraft 整合包', extensions: ['mrpack', 'zip'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || !result.filePaths[0]) return { canceled: true }
+    const report = reporter(taskId)
+    try {
+      return await importModpack(result.filePaths[0], baseVersionId, report)
+    } catch (err) {
+      const message = await errorMessage(err)
+      report({ stage: 'error', message, error: message, done: true })
+      throw new Error(message)
+    }
+  })
   ipcMain.handle('versions:loaderInfo', () => LOADER_INFO)
   ipcMain.handle('versions:openFolder', async (_event, versionId: string) => {
     const settings = await getSettings()
@@ -342,10 +421,17 @@ function registerIpc(): void {
   ipcMain.handle('mods:search', (_event, params: ModSearchParams) => searchMods(params))
   ipcMain.handle(
     'mods:install',
-    async (_event, projectId: string, gameVersion: string, loader: string, taskId: string) => {
+    async (
+      _event,
+      projectId: string,
+      gameVersion: string,
+      loader: string,
+      versionId: string | undefined,
+      taskId: string
+    ) => {
       const report = reporter(taskId)
       try {
-        return await installMod(projectId, gameVersion, loader, report)
+        return await installMod(projectId, gameVersion, loader, versionId, report)
       } catch (err) {
         const message = await errorMessage(err)
         report({ stage: 'error', message, error: message, done: true })
@@ -353,11 +439,16 @@ function registerIpc(): void {
       }
     }
   )
-  ipcMain.handle('mods:installed', () => listInstalledMods())
-  ipcMain.handle('mods:toggle', (_event, fileName: string, enabled: boolean) =>
-    toggleMod(fileName, enabled)
+  ipcMain.handle('mods:installed', (_event, versionId?: string) => listInstalledMods(versionId))
+  ipcMain.handle('mods:toggle', (_event, fileName: string, enabled: boolean, versionId?: string) =>
+    toggleMod(fileName, enabled, versionId)
   )
-  ipcMain.handle('mods:remove', (_event, fileName: string) => deleteMod(fileName))
+  ipcMain.handle('mods:remove', (_event, fileName: string, versionId?: string) => deleteMod(fileName, versionId))
+  ipcMain.handle('mods:openFolder', async (_event, versionId?: string) => {
+    const dir = await openModsDir(versionId)
+    await ensureDir(dir)
+    await shell.openPath(dir)
+  })
 
   ipcMain.handle('launch:start', async (_event, options, taskId: string) => {
     if (isGameRunning()) throw new Error('游戏已经在运行中')

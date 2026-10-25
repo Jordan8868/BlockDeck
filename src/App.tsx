@@ -63,11 +63,21 @@ function PageRouter(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
-  const { ready } = useApp()
+  const { ready, settings } = useApp()
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme
+  }, [settings.theme])
   if (!ready) return <BootScreen />
+  const customBackground = settings.customBackground
+  const backgroundStyle = customBackground
+    ? {
+        backgroundImage: `linear-gradient(rgba(3, 7, 9, ${settings.backgroundDim}), rgba(3, 7, 9, ${Math.min(0.92, settings.backgroundDim + 0.11)})), url("${customBackground}")`
+      }
+    : undefined
   return (
     <ErrorBoundary>
-      <div className="app">
+      <div className={`app ${customBackground ? 'has-custom-bg' : ''}`}>
+        {backgroundStyle ? <div className="custom-background" style={backgroundStyle} aria-hidden /> : null}
         <div className="ambient" aria-hidden>
           <span className="ambient-orb ambient-orb-a" />
           <span className="ambient-orb ambient-orb-b" />

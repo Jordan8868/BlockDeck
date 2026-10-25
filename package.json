@@ -1,7 +1,7 @@
 {
   "name": "blockdeck",
   "productName": "BlockDeck",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "description": "方块工坊 BlockDeck — 精致的 Minecraft Java 版启动器",
   "main": "./out/main/index.js",
   "author": "Jordan8868",

@@ -6,6 +6,7 @@ import {
   HardDrive,
   Layers3,
   Loader2,
+  PackageOpen,
   PackagePlus,
   Play,
   RefreshCw,
@@ -19,7 +20,7 @@ import type { InstalledVersion, LoaderKind, RemoteVersion } from '@shared/types'
 import { useApp } from '../store'
 import { PageHeader } from '../components/Page'
 import { LoaderBadge, ProgressBar, Spinner } from '../components/Bits'
-import { ConfirmDialog } from '../components/Modal'
+import { ConfirmDialog, Modal, ModalHeader } from '../components/Modal'
 import { LoaderModal } from '../components/LoaderModal'
 import {
   downloadSourceLabel,
@@ -59,6 +60,9 @@ export function VersionsPage(): React.JSX.Element {
   const [loaderTarget, setLoaderTarget] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<InstalledVersion | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importBase, setImportBase] = useState('')
+  const [importing, setImporting] = useState(false)
 
   useEffect(() => {
     setVisibleCount(40)
@@ -128,6 +132,28 @@ export function VersionsPage(): React.JSX.Element {
     }
   }
 
+  const openImport = (): void => {
+    setImportBase(selectedVersionId || installed[0]?.id || '')
+    setImportOpen(true)
+  }
+
+  const importPack = async (): Promise<void> => {
+    setImporting(true)
+    try {
+      const result = await runTask({ title: '导入整合包', kind: 'install' }, (taskId) =>
+        window.blockdeck.versions.importModpack(importBase || undefined, taskId)
+      )
+      if (!result || result.canceled || !result.versionId) return
+      await refreshInstalled()
+      selectVersion(result.versionId)
+      setTab('installed')
+      setImportOpen(false)
+      toast(`已导入 ${result.name ?? '整合包'}（${result.files ?? 0} 个文件）`, 'success')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   return (
     <div className="page versions-page">
       <PageHeader
@@ -151,6 +177,9 @@ export function VersionsPage(): React.JSX.Element {
                 </button>
               ))}
             </div>
+            <button className="icon-btn" onClick={openImport} title="导入整合包">
+              <PackageOpen size={17} />
+            </button>
             <button className="icon-btn" onClick={() => void refresh()} title="刷新">
               {refreshing ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
             </button>
@@ -399,17 +428,25 @@ export function VersionsPage(): React.JSX.Element {
                   style={{ '--card-accent': meta.color } as React.CSSProperties}
                 >
                   <div className="installed-card-head">
-                    <span className="installed-mark" style={{ background: meta.soft, color: meta.color }}>
-                      {version.loader === 'vanilla' ? 'V' : meta.label.slice(0, 1)}
+                    <span
+                      className={`installed-mark ${version.isPack ? 'is-pack' : ''}`}
+                      style={
+                        version.isPack
+                          ? { background: 'rgba(var(--accent-rgb), 0.12)', color: 'var(--lime)' }
+                          : { background: meta.soft, color: meta.color }
+                      }
+                    >
+                      {version.isPack ? 'P' : version.loader === 'vanilla' ? 'V' : meta.label.slice(0, 1)}
                     </span>
                     <div className="installed-title">
-                      <strong>{version.baseVersion ?? version.id}</strong>
-                      <span>{version.id}</span>
+                      <strong>{version.displayName ?? version.baseVersion ?? version.id}</strong>
+                      <span>{version.isPack ? `${version.packVersion ?? '整合包'} · ${version.id}` : version.id}</span>
                     </div>
                     {isRunning ? <span className="live-pill">运行中</span> : null}
                   </div>
                   <div className="installed-tags">
                     <LoaderBadge kind={version.loader} size="sm" />
+                    {version.isPack ? <span className="mini-tag pack-tag">整合包</span> : null}
                     {version.loaderVersion ? <span className="mini-tag">{version.loaderVersion}</span> : null}
                     {version.loader === 'vanilla' ? (
                       <span className="mini-tag">{formatBytes(version.sizeBytes)}</span>
@@ -419,9 +456,11 @@ export function VersionsPage(): React.JSX.Element {
                     <span>
                       类型
                       <strong>
-                        {version.loader === 'vanilla'
-                          ? versionTypeMeta[version.type]?.label ?? '正式版'
-                          : '模组加载器'}
+                        {version.isPack
+                          ? '整合包'
+                          : version.loader === 'vanilla'
+                            ? versionTypeMeta[version.type]?.label ?? '正式版'
+                            : '模组加载器'}
                       </strong>
                     </span>
                     <span>
@@ -441,13 +480,15 @@ export function VersionsPage(): React.JSX.Element {
                       {isRunning ? <Square size={13} /> : <Play size={13} fill="currentColor" />}
                       {isRunning ? '结束' : '启动'}
                     </button>
-                    <button
-                      className="icon-btn"
-                      title="安装加载器"
-                      onClick={() => setLoaderTarget(version.baseVersion ?? version.id)}
-                    >
-                      <PackagePlus size={15} />
-                    </button>
+                    {!version.isPack ? (
+                      <button
+                        className="icon-btn"
+                        title="安装加载器"
+                        onClick={() => setLoaderTarget(version.baseVersion ?? version.id)}
+                      >
+                        <PackagePlus size={15} />
+                      </button>
+                    ) : null}
                     <button
                       className="icon-btn"
                       title="打开版本目录"
@@ -511,6 +552,55 @@ export function VersionsPage(): React.JSX.Element {
           加载器安装进行中，日志实时可见
         </div>
       ) : null}
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} width={560}>
+        <ModalHeader
+          eyebrow="IMPORT / 整合包"
+          title="把整合包，带进版本库"
+          subtitle="支持 Modrinth .mrpack，以及已经包含 mods/ 的 ZIP；导入后拥有独立实例。"
+          icon={<PackageOpen size={20} />}
+          onClose={() => setImportOpen(false)}
+        />
+        <div className="modpack-import">
+          <div className="modpack-import-note">
+            <strong>会自动完成什么？</strong>
+            <span>.mrpack 会读取依赖、下载模组并复制 overrides；ZIP 会把包装入一个独立实例。</span>
+          </div>
+          <label className="modpack-field">
+            <span>ZIP 的基础版本</span>
+            <select
+              value={importBase}
+              onChange={(event) => setImportBase(event.target.value)}
+              disabled={!installed.length}
+            >
+              {installed.length ? (
+                installed.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.displayName ?? version.baseVersion ?? version.id} · {version.id}
+                  </option>
+                ))
+              ) : (
+                <option value="">请先安装一个版本</option>
+              )}
+            </select>
+          </label>
+          <p className="modpack-import-hint">
+            .mrpack 会按其中的 Minecraft / 加载器依赖自动匹配已安装版本；如果缺少对应加载器，请先到版本库安装。
+          </p>
+          <div className="modal-actions">
+            <button className="btn btn-ghost" onClick={() => setImportOpen(false)}>
+              取消
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => void importPack()}
+              disabled={!installed.length || importing}
+            >
+              {importing ? <Loader2 size={15} className="spin" /> : <PackageOpen size={15} />}
+              {importing ? '等待文件…' : '选择文件并导入'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

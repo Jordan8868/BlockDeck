@@ -8,7 +8,7 @@ import type {
   ProgressReporter
 } from '@shared/types'
 import { getSettings } from './store'
-import { listInstalledVersions } from './minecraft'
+import { listInstalledVersions, versionGameDir } from './minecraft'
 import {
   downloadFile,
   ensureDir,
@@ -122,9 +122,9 @@ export async function searchMods(options: ModSearchOptions): Promise<ModSearchRe
   }
 }
 
-async function modsDir(): Promise<string> {
-  const settings = await getSettings()
-  const dir = path.join(settings.gameDir, 'mods')
+async function modsDir(versionId?: string): Promise<string> {
+  const gameDir = await versionGameDir(versionId)
+  const dir = path.join(gameDir, 'mods')
   await ensureDir(dir)
   return dir
 }
@@ -137,8 +137,8 @@ async function writeMeta(dir: string, meta: ModMetaFile): Promise<void> {
   await writeJson(path.join(dir, META_FILE), meta)
 }
 
-export async function listInstalledMods(): Promise<InstalledMod[]> {
-  const dir = await modsDir()
+export async function listInstalledMods(versionId?: string): Promise<InstalledMod[]> {
+  const dir = await modsDir(versionId)
   const meta = await readMeta(dir)
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
   const byFile = new Map(Object.values(meta.mods).map((entry) => [entry.fileName, entry]))
@@ -161,8 +161,8 @@ export async function listInstalledMods(): Promise<InstalledMod[]> {
   return result.sort((a, b) => (a.projectTitle ?? a.fileName).localeCompare(b.projectTitle ?? b.fileName))
 }
 
-export async function toggleMod(fileName: string, enabled: boolean): Promise<void> {
-  const dir = await modsDir()
+export async function toggleMod(fileName: string, enabled: boolean, versionId?: string): Promise<void> {
+  const dir = await modsDir(versionId)
   if (!fileName || fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
     throw new Error('非法的模组文件名')
   }
@@ -183,8 +183,8 @@ export async function toggleMod(fileName: string, enabled: boolean): Promise<voi
   await writeMeta(dir, meta)
 }
 
-export async function deleteMod(fileName: string): Promise<void> {
-  const dir = await modsDir()
+export async function deleteMod(fileName: string, versionId?: string): Promise<void> {
+  const dir = await modsDir(versionId)
   if (!fileName || fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
     throw new Error('非法的模组文件名')
   }
@@ -321,6 +321,7 @@ export async function installMod(
   projectId: string,
   gameVersion: string,
   loader: string,
+  versionId: string | undefined,
   report: ProgressReporter
 ): Promise<ModInstallResult> {
   const installed = await listInstalledVersions()
@@ -328,7 +329,7 @@ export async function installMod(
     throw new Error(`请先安装 Minecraft ${gameVersion}，再安装该模组`)
   }
   const settings = await getSettings()
-  const dir = await modsDir()
+  const dir = await modsDir(versionId)
   const versions = await listVersions(projectId, gameVersion, loader)
   if (!versions.length) {
     throw new Error('没有找到与该游戏版本 / 加载器兼容的模组文件')
@@ -337,7 +338,7 @@ export async function installMod(
   const first = versions[0]
   const title = await projectTitle(projectId)
   const ctx: InstallContext = {
-    gameDir: settings.gameDir,
+    gameDir: await versionGameDir(versionId),
     modsDir: dir,
     meta,
     gameVersion,
@@ -356,6 +357,10 @@ export async function installMod(
     projectTitle: title,
     fileName: primary?.filename ?? ''
   }
+}
+
+export async function openModsDir(versionId?: string): Promise<string> {
+  return modsDir(versionId)
 }
 
 export async function getModrinthProject(projectId: string): Promise<Record<string, unknown>> {

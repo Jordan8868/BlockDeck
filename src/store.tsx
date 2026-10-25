@@ -92,7 +92,7 @@ interface AppContextValue {
   clearLogs: () => void
   toast: (message: string, kind?: ToastKind) => void
   removeToast: (id: string) => void
-  refreshMods: () => Promise<InstalledMod[]>
+  refreshMods: (versionId?: string) => Promise<InstalledMod[]>
   installedMods: InstalledMod[]
 }
 
@@ -104,7 +104,11 @@ const initialSettings: LauncherSettings = {
   downloadSource: 'auto',
   maxConcurrent: 8,
   minimizeOnLaunch: false,
-  showSnapshots: false
+  showSnapshots: false,
+  versionIsolation: false,
+  theme: 'lime',
+  customBackground: '',
+  backgroundDim: 0.72
 }
 
 const initialAccountState: AccountState = { accounts: [], activeId: null }
@@ -184,8 +188,8 @@ export function LauncherProvider({ children }: { children: React.ReactNode }): R
     return list
   }, [])
 
-  const refreshMods = useCallback(async (): Promise<InstalledMod[]> => {
-    const mods = await window.blockdeck.mods.installed()
+  const refreshMods = useCallback(async (versionId?: string): Promise<InstalledMod[]> => {
+    const mods = await window.blockdeck.mods.installed(versionId)
     setInstalledMods(mods)
     return mods
   }, [])

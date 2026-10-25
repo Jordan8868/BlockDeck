@@ -2,7 +2,7 @@
 ManifestDPIAware true
 
 !define APP_NAME "BlockDeck"
-!define APP_VERSION "1.1.0"
+!define APP_VERSION "1.2.1"
 !define APP_PUBLISHER "Jordan8868"
 !define APP_EXE "BlockDeck.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\BlockDeck"
@@ -18,10 +18,10 @@ CRCCheck on
 BrandingText "${APP_PUBLISHER} · BlockDeck ${APP_VERSION}"
 Caption "BlockDeck ${APP_VERSION} 安装程序"
 
-VIProductVersion "1.1.0.0"
+VIProductVersion "1.2.1.0"
 VIAddVersionKey /LANG=2052 "CompanyName" "${APP_PUBLISHER}"
 VIAddVersionKey /LANG=2052 "FileDescription" "BlockDeck 安装程序"
-VIAddVersionKey /LANG=2052 "FileVersion" "1.1.0.0"
+VIAddVersionKey /LANG=2052 "FileVersion" "1.2.1.0"
 VIAddVersionKey /LANG=2052 "InternalName" "BlockDeckSetup"
 VIAddVersionKey /LANG=2052 "LegalCopyright" "Copyright © 2026 Jordan8868"
 VIAddVersionKey /LANG=2052 "OriginalFilename" "BlockDeck-${APP_VERSION}-Setup.exe"

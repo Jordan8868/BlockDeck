@@ -8,8 +8,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $appDir = Join-Path $root 'release\BlockDeck-win32-x64'
-$setup = Join-Path $root 'release\BlockDeck-1.1.0-Setup.exe'
-$portable = Join-Path $root 'release\BlockDeck-1.1.0-Portable-win64.zip'
+$setup = Join-Path $root 'release\BlockDeck-1.2.1-Setup.exe'
+$portable = Join-Path $root 'release\BlockDeck-1.2.1-Portable-win64.zip'
 
 if (-not (Test-Path $PfxPath)) { throw "找不到 PFX 证书：$PfxPath" }
 

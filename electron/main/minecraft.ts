@@ -8,7 +8,8 @@ import type {
   ProgressReporter,
   RemoteVersion,
   VersionManifest,
-  VersionType
+  VersionType,
+  LauncherSettings
 } from '@shared/types'
 import { getSettings } from './store'
 import {
@@ -59,6 +60,16 @@ export interface VersionJson {
   releaseTime?: string
   time?: string
   complianceLevel?: number
+  blockdeck?: {
+    packName?: string
+    packVersion?: string
+    gameVersion?: string
+    loader?: LoaderKind
+    loaderVersion?: string
+    isolated?: boolean
+    importedAt?: number
+    source?: string
+  }
   [key: string]: unknown
 }
 
@@ -218,20 +229,45 @@ export function rulesAllow(rules: Rule[] | undefined, features: Record<string, b
   return allowed
 }
 
-function isNativeLibrary(library: Library): { native: boolean; classifier?: string; legacy: boolean } {
+interface NativeLibraryInfo {
+  native: boolean
+  compatible: boolean
+  classifier?: string
+  legacy: boolean
+}
+
+function isCompatibleNativeClassifier(classifier: string): boolean {
+  if (!classifier.startsWith('natives-')) return false
+  if (!classifier.startsWith('natives-windows')) return false
+  const lower = classifier.toLowerCase()
+  if (lower.includes('arm64') || lower.includes('aarch64')) return false
+  if (/(^|[-_])x86($|[-_])/.test(lower) || /(^|[-_])i386($|[-_])/.test(lower)) return false
+  if (/(^|[-_])32($|[-_])/.test(lower)) return false
+  return true
+}
+
+function nativeLibraryInfo(library: Library): NativeLibraryInfo {
   const parsed = parseLibraryName(library.name)
-  if (parsed.classifier && /^natives-windows($|-)/.test(parsed.classifier)) {
-    if (parsed.classifier.includes('arm64')) return { native: false, legacy: false }
-    return { native: true, classifier: parsed.classifier, legacy: false }
+  if (parsed.classifier && parsed.classifier.startsWith('natives-')) {
+    return {
+      native: true,
+      compatible: isCompatibleNativeClassifier(parsed.classifier),
+      classifier: parsed.classifier,
+      legacy: false
+    }
   }
   if (library.natives) {
     const template = library.natives.windows
-    if (template) {
-      const arch = process.arch === 'x64' ? '64' : '32'
-      return { native: true, classifier: template.replace('${arch}', arch), legacy: true }
+    if (!template) return { native: true, compatible: false, legacy: true }
+    const classifier = template.replace('${arch}', process.arch === 'x64' ? '64' : '32')
+    return {
+      native: true,
+      compatible: isCompatibleNativeClassifier(classifier),
+      classifier,
+      legacy: true
     }
   }
-  return { native: false, legacy: false }
+  return { native: false, compatible: false, legacy: false }
 }
 
 export interface PlannedLibraries {
@@ -255,7 +291,8 @@ export function planLibraries(
   for (const library of libraries) {
     if (!rulesAllow(library.rules, features)) continue
     const parsed = parseLibraryName(library.name)
-    const nativeInfo = isNativeLibrary(library)
+    const nativeInfo = nativeLibraryInfo(library)
+    if (nativeInfo.native && !nativeInfo.compatible) continue
     const mavenPath = libraryMavenPath(library.name)
     const isMojangMaven = !library.url || library.url.includes('libraries.minecraft.net')
     const mirrorUrl = `${MIRROR}/maven/${mavenPath}`
@@ -492,8 +529,21 @@ async function copyAssetsTo(
 }
 
 export async function extractNatives(nativeJars: string[], nativesDir: string): Promise<void> {
-  await fs.rm(nativesDir, { recursive: true, force: true })
-  await ensureDir(nativesDir)
+  // Keep the existing native tree: deleting a directory while Windows has a
+  // DLL mapped (crash handle, antivirus scan, or a still-exiting game) can leave
+  // the directory in a delete-pending state and make the next launch fail.
+  // Current native files are overwritten below instead.
+  // Modern Minecraft points java.library.path at natives/java, while older
+  // versions load from the natives root. Populate both layouts so every
+  // supported version can resolve lwjgl.dll and friends.
+  const javaDir = path.join(nativesDir, 'java')
+  await Promise.all([
+    ensureDir(nativesDir),
+    ensureDir(javaDir),
+    ensureDir(path.join(nativesDir, 'lwjgl')),
+    ensureDir(path.join(nativesDir, 'jna')),
+    ensureDir(path.join(nativesDir, 'netty'))
+  ])
   const AdmZip = (await import('adm-zip')).default
   for (const jar of nativeJars) {
     if (!(await pathExists(jar))) continue
@@ -503,12 +553,41 @@ export async function extractNatives(nativeJars: string[], nativesDir: string): 
         if (entry.isDirectory) continue
         const base = path.basename(entry.entryName)
         if (!/\.(dll|so|dylib)$/i.test(base)) continue
-        await fs.writeFile(path.join(nativesDir, base), entry.getData())
+        const lower = entry.entryName.split(String.fromCharCode(92)).join('/').toLowerCase()
+        if (lower.includes('arm64') || lower.includes('aarch64')) continue
+        if (/(^|\/)(x86|i386|win32)(\/|$)/.test(lower)) continue
+        const data = entry.getData()
+        await fs.writeFile(path.join(nativesDir, base), data).catch(() => undefined)
+        await fs.writeFile(path.join(javaDir, base), data).catch(() => undefined)
       }
     } catch {
       // ignore a corrupt optional native archive; launch will surface missing libs
     }
   }
+}
+
+export function isolatedGameDir(
+  settings: LauncherSettings,
+  versionId: string,
+  force = false
+): string {
+  if (!settings.versionIsolation && !force) return settings.gameDir
+  const safeId = versionId.replace(/[\/:*?"<>|]/g, '_')
+  return path.join(settings.gameDir, 'versions', safeId, 'game')
+}
+
+export async function versionGameDir(versionId?: string): Promise<string> {
+  const settings = await getSettings()
+  if (settings.versionIsolation && versionId) return isolatedGameDir(settings, versionId)
+  if (versionId) {
+    try {
+      const json = await loadInstalledVersionJson(versionId)
+      if (json.blockdeck?.isolated) return isolatedGameDir(settings, versionId, true)
+    } catch {
+      // Fall back to the shared game directory.
+    }
+  }
+  return settings.gameDir
 }
 
 export async function listInstalledVersions(): Promise<InstalledVersion[]> {
@@ -522,21 +601,24 @@ export async function listInstalledVersions(): Promise<InstalledVersion[]> {
     const jsonFile = path.join(versionsDir, entry.name, `${entry.name}.json`)
     const json = await readJson<VersionJson | null>(jsonFile, null)
     if (!json) continue
-    let loader: LoaderKind = 'vanilla'
+    const pack = json.blockdeck
+    let loader: LoaderKind = pack?.loader ?? 'vanilla'
     const lower = entry.name.toLowerCase()
-    if (lower.includes('neoforge')) loader = 'neoforge'
-    else if (lower.includes('forge')) loader = 'forge'
-    else if (lower.includes('fabric')) loader = 'fabric'
-    else if (lower.includes('quilt')) loader = 'quilt'
-    const baseVersion = json.inheritsFrom
-    let loaderVersion: string | undefined
-    if (loader === 'fabric') {
+    if (!pack?.loader) {
+      if (lower.includes('neoforge')) loader = 'neoforge'
+      else if (lower.includes('forge')) loader = 'forge'
+      else if (lower.includes('fabric')) loader = 'fabric'
+      else if (lower.includes('quilt')) loader = 'quilt'
+    }
+    const baseVersion = pack?.gameVersion ?? json.inheritsFrom
+    let loaderVersion: string | undefined = pack?.loaderVersion
+    if (!pack && loader === 'fabric') {
       const match = entry.name.match(/^fabric-loader-(.+)-([^-]+)$/)
       loaderVersion = match?.[1]
-    } else if (loader === 'quilt') {
+    } else if (!pack && loader === 'quilt') {
       const match = entry.name.match(/^quilt-loader-(.+)-([^-]+)$/)
       loaderVersion = match?.[1]
-    } else if (loader === 'forge' || loader === 'neoforge') {
+    } else if (!pack && (loader === 'forge' || loader === 'neoforge')) {
       const match = entry.name.match(/(?:neoforge|forge)-?(.+)$/i)
       if (match) {
         const raw = match[1]
@@ -549,13 +631,19 @@ export async function listInstalledVersions(): Promise<InstalledVersion[]> {
     const sizeBytes = await folderSize(path.join(versionsDir, entry.name))
     result.push({
       id: entry.name,
-      name: baseVersion ?? entry.name,
+      name: pack?.packName ?? baseVersion ?? entry.name,
+      displayName: pack?.packName,
       type: (json.type as VersionType | 'modified') ?? 'release',
       releaseTime: json.releaseTime ?? json.time,
       loader,
       baseVersion,
       loaderVersion,
-      sizeBytes
+      sizeBytes,
+      isPack: Boolean(pack?.packName),
+      packName: pack?.packName,
+      packVersion: pack?.packVersion,
+      isolated: Boolean(pack?.isolated),
+      parentVersionId: pack ? json.inheritsFrom : undefined
     })
   }
   // Loader profiles carry the installer's build timestamp; use the base game's
@@ -595,7 +683,9 @@ export async function folderSize(dir: string): Promise<number> {
 export async function deleteVersion(versionId: string): Promise<void> {
   const settings = await getSettings()
   const installed = await listInstalledVersions()
-  const dependents = installed.filter((version) => version.baseVersion === versionId)
+  const dependents = installed.filter(
+    (version) => version.baseVersion === versionId || version.parentVersionId === versionId
+  )
   if (dependents.length) {
     throw new Error(`请先删除依赖该版本的加载器：${dependents.map((v) => v.id).join('、')}`)
   }
@@ -631,6 +721,9 @@ export interface MergedVersion {
   clientJar: string
   nativesDir: string
   versionDir: string
+  isolated: boolean
+  packName?: string
+  packVersion?: string
 }
 
 export async function mergeVersion(versionId: string): Promise<MergedVersion> {
@@ -693,7 +786,10 @@ export async function mergeVersion(versionId: string): Promise<MergedVersion> {
     baseId,
     type: child.type ?? parent?.type ?? 'release',
     releaseTime: child.releaseTime ?? parent?.releaseTime,
-    mainClass: child.mainClass,
+    mainClass: child.mainClass ?? chain.find((version) => version.mainClass)?.mainClass ?? '',
+    isolated: Boolean(child.blockdeck?.isolated),
+    packName: child.blockdeck?.packName,
+    packVersion: child.blockdeck?.packVersion,
     assets,
     assetIndex,
     libraries,

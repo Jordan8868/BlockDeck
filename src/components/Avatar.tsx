@@ -80,16 +80,41 @@ export function PixelAvatar({
   )
 }
 
+function SkinHead({ skin, size }: { skin: string; size: number }): React.JSX.Element {
+  const ref = React.useRef<HTMLCanvasElement>(null)
+  React.useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const image = new Image()
+    image.onload = (): void => {
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.clearRect(0, 0, size, size)
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(image, 8, 8, 8, 8, 0, 0, size, size)
+      if (image.width >= 64 && image.height >= 64) {
+        ctx.drawImage(image, 40, 8, 8, 8, 0, 0, size, size)
+      }
+    }
+    image.src = skin
+  }, [skin, size])
+  return <canvas ref={ref} width={size} height={size} className="skin-head-canvas" aria-hidden />
+}
+
 export function Avatar({
   name,
   uuid,
   skinUrl,
+  customSkin,
   size = 44,
   className = ''
 }: {
   name: string
   uuid?: string
   skinUrl?: string
+  customSkin?: string
   size?: number
   className?: string
 }): React.JSX.Element {
@@ -97,7 +122,9 @@ export function Avatar({
   const remote = uuid && skinUrl ? `https://crafatar.com/avatars/${uuid}?size=96&overlay` : ''
   return (
     <span className={`avatar ${className}`} style={{ width: size, height: size }}>
-      {remote && !failed ? (
+      {customSkin ? (
+        <SkinHead skin={customSkin} size={size} />
+      ) : remote && !failed ? (
         <img
           src={remote}
           alt={name}

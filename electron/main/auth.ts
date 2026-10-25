@@ -380,3 +380,66 @@ export async function loginOffline(nameRaw: string): Promise<Account> {
 export function randomClientId(): string {
   return newId()
 }
+
+function dataUrlBytes(dataUrl: string): Buffer {
+  const comma = dataUrl.indexOf(',')
+  if (comma < 0) throw new AuthError('皮肤数据格式不正确')
+  return Buffer.from(dataUrl.slice(comma + 1), 'base64')
+}
+
+export async function saveLocalSkin(
+  accountId: string,
+  dataUrl: string,
+  model: 'classic' | 'slim'
+): Promise<Account> {
+  const account = await getAccount(accountId)
+  if (!account) throw new AuthError('账户不存在')
+  account.customSkin = dataUrl
+  account.skinModel = model
+  await saveAccount(account)
+  return account
+}
+
+export async function uploadMinecraftSkin(
+  accountId: string,
+  dataUrl: string,
+  png: Buffer,
+  model: 'classic' | 'slim'
+): Promise<Account> {
+  const account = await ensureFreshAccount(accountId)
+  if (account.type !== 'microsoft') throw new AuthError('只有 Microsoft 正版账户可以上传皮肤')
+  if (!account.accessToken) throw new AuthError('Microsoft 登录已过期，请重新登录')
+
+  const form = new FormData()
+  form.append('variant', model)
+  form.append('file', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'skin.png')
+  const res = await httpFetch('https://api.minecraftservices.com/minecraft/profile/skins', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${account.accessToken}` },
+    body: form,
+    timeoutMs: 60_000
+  })
+  if (!res.ok) throw new AuthError(await parseError(res, 'Minecraft 皮肤上传失败'))
+
+  const profileRes = await httpFetch('https://api.minecraftservices.com/minecraft/profile', {
+    headers: { Authorization: `Bearer ${account.accessToken}` }
+  })
+  if (profileRes.ok) {
+    const profile = (await profileRes.json()) as MinecraftProfile
+    const skin = profile.skins?.find((entry) => entry.state === 'ACTIVE')
+    account.skinUrl = skin?.url ?? account.skinUrl
+  }
+  account.customSkin = dataUrl
+  account.skinModel = model
+  await saveAccount(account)
+  return account
+}
+
+export async function clearLocalSkin(accountId: string): Promise<Account> {
+  const account = await getAccount(accountId)
+  if (!account) throw new AuthError('账户不存在')
+  account.customSkin = undefined
+  account.skinModel = undefined
+  await saveAccount(account)
+  return account
+}

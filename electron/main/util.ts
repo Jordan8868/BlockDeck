@@ -7,7 +7,7 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import AdmZip from 'adm-zip'
 
-export const USER_AGENT = 'BlockDeck/1.1.0 (Minecraft launcher; +https://blockdeck.local)'
+export const USER_AGENT = 'BlockDeck/1.2.1 (Minecraft launcher; +https://blockdeck.local)'
 
 export function newId(): string {
   return randomUUID()
@@ -81,7 +81,7 @@ export interface HttpOptions {
   headers?: Record<string, string>
   timeoutMs?: number
   method?: string
-  body?: string
+  body?: string | FormData
 }
 
 export async function httpFetch(url: string, options: HttpOptions = {}): Promise<Response> {

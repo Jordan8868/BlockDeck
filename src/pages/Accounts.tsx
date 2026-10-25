@@ -1,11 +1,13 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   ArrowRight,
   Check,
+  ImagePlus,
   KeyRound,
   Loader2,
   LockKeyhole,
   Plus,
+  ScanFace,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -15,6 +17,7 @@ import {
 import { useApp } from '../store'
 import { PageHeader } from '../components/Page'
 import { Avatar } from '../components/Avatar'
+import { SkinPreview } from '../components/SkinPreview'
 import { ConfirmDialog } from '../components/Modal'
 import { formatDate } from '../lib'
 import type { PublicAccount } from '@shared/types'
@@ -38,13 +41,53 @@ export function AccountsPage(): React.JSX.Element {
     loginOffline,
     removeAccount,
     setActiveAccount,
+    refreshAccounts,
     toast
   } = useApp()
   const [msLoading, setMsLoading] = useState(false)
   const [offlineName, setOfflineName] = useState('')
   const [offlineLoading, setOfflineLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PublicAccount | null>(null)
+  const [skinModel, setSkinModel] = useState<'classic' | 'slim'>('classic')
+  const [skinLoading, setSkinLoading] = useState(false)
   const validName = /^[A-Za-z0-9_]{3,16}$/.test(offlineName.trim())
+
+  useEffect(() => {
+    setSkinModel(activeAccount?.skinModel === 'slim' ? 'slim' : 'classic')
+  }, [activeAccount?.id, activeAccount?.skinModel])
+
+  const applySkin = async (): Promise<void> => {
+    if (!activeAccount) return
+    setSkinLoading(true)
+    try {
+      await window.blockdeck.accounts.applySkin(activeAccount.id, skinModel)
+      await refreshAccounts()
+      toast(
+        activeAccount.type === 'microsoft'
+          ? '皮肤已上传到 Minecraft 账户'
+          : '本地皮肤已应用',
+        'success'
+      )
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error')
+    } finally {
+      setSkinLoading(false)
+    }
+  }
+
+  const clearSkin = async (): Promise<void> => {
+    if (!activeAccount) return
+    setSkinLoading(true)
+    try {
+      await window.blockdeck.accounts.clearSkin(activeAccount.id)
+      await refreshAccounts()
+      toast('已移除本地皮肤', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error')
+    } finally {
+      setSkinLoading(false)
+    }
+  }
 
   const handleMicrosoft = async (): Promise<void> => {
     setMsLoading(true)
@@ -196,7 +239,7 @@ export function AccountsPage(): React.JSX.Element {
               const active = account.id === accountState.activeId
               return (
                 <div className={`account-row ${active ? 'is-active' : ''}`} key={account.id}>
-                  <Avatar name={account.name} uuid={account.uuid} skinUrl={account.skinUrl} size={46} />
+                  <Avatar name={account.name} uuid={account.uuid} skinUrl={account.skinUrl} customSkin={account.customSkin} size={46} />
                   <div className="account-row-copy">
                     <div className="account-row-name">
                       <strong>{account.name}</strong>
@@ -275,6 +318,89 @@ export function AccountsPage(): React.JSX.Element {
         </div>
         <Sparkles size={18} className="security-spark" />
       </div>
+
+      <section className="skin-studio panel">
+        <div className="skin-studio-head">
+          <span className="skin-studio-icon">
+            <ScanFace size={19} />
+          </span>
+          <div>
+            <div className="eyebrow">SKIN / 皮肤</div>
+            <h2>让角色，一眼认出你</h2>
+            <p>导入 64×64 或 64×32 的 PNG 皮肤，选择经典或纤细模型。</p>
+          </div>
+          <span className="skin-studio-pill">
+            {activeAccount ? activeAccount.name : '未选择账户'}
+          </span>
+        </div>
+        <div className="skin-studio-grid">
+          <div className="skin-preview-card">
+            {activeAccount?.customSkin ? (
+              <SkinPreview skin={activeAccount.customSkin} />
+            ) : (
+              <div className="skin-preview-empty">
+                <Avatar
+                  name={activeAccount?.name ?? 'Steve'}
+                  uuid={activeAccount?.uuid}
+                  skinUrl={activeAccount?.skinUrl}
+                  size={104}
+                />
+                <span>
+                  {activeAccount
+                    ? '导入皮肤后显示角色预览'
+                    : '先登录或选择一个账户'}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className="skin-controls">
+            <div className="skin-control-block">
+              <span className="skin-control-label">皮肤模型</span>
+              <div className="segmented skin-model-toggle">
+                <button
+                  className={skinModel === 'classic' ? 'is-active' : ''}
+                  onClick={() => setSkinModel('classic')}
+                >
+                  经典 4px
+                </button>
+                <button
+                  className={skinModel === 'slim' ? 'is-active' : ''}
+                  onClick={() => setSkinModel('slim')}
+                >
+                  纤细 3px
+                </button>
+              </div>
+            </div>
+            <div className="skin-studio-actions">
+              <button
+                className="btn btn-primary"
+                onClick={() => void applySkin()}
+                disabled={!activeAccount || skinLoading}
+              >
+                {skinLoading ? <Loader2 size={15} className="spin" /> : <ImagePlus size={15} />}
+                {skinLoading
+                  ? '处理中…'
+                  : activeAccount?.type === 'microsoft'
+                    ? '选择并上传皮肤'
+                    : '选择本地皮肤'}
+              </button>
+              {activeAccount?.type === 'offline' && activeAccount.customSkin ? (
+                <button className="btn btn-ghost" onClick={() => void clearSkin()} disabled={skinLoading}>
+                  <Trash2 size={14} /> 移除
+                </button>
+              ) : null}
+            </div>
+            <p className="skin-note">
+              {activeAccount?.type === 'microsoft'
+                ? '皮肤会通过 Minecraft Services 上传到正版账户，进入服务器时同步。'
+                : activeAccount?.type === 'offline'
+                  ? '皮肤保存在本机，用于启动器头像与预览；离线客户端不会自动同步到正版服务器。'
+                  : '登录 Microsoft 账户或创建离线档案后，即可导入自定义皮肤。'}
+            </p>
+            <span className="skin-format">PNG · 64×64 / 64×32 · 最大 256 KB</span>
+          </div>
+        </div>
+      </section>
 
       <ConfirmDialog
         open={!!deleteTarget}

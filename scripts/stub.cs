@@ -9,9 +9,9 @@ using System.Text;
 [assembly: AssemblyCompany("Jordan8868")]
 [assembly: AssemblyProduct("BlockDeck")]
 [assembly: AssemblyCopyright("Copyright © 2026 Jordan8868")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0")]
+[assembly: AssemblyVersion("1.2.1.0")]
+[assembly: AssemblyFileVersion("1.2.1.0")]
+[assembly: AssemblyInformationalVersion("1.2.1")]
 
 internal static class BlockDeckLauncher
 {

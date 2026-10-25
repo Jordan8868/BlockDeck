@@ -8,17 +8,20 @@ import {
   Gauge,
   Globe2,
   HardDrive,
+  ImagePlus,
   Info,
   Layers3,
   Loader2,
   MemoryStick,
   MonitorCog,
+  Palette,
   RefreshCw,
   Server,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Terminal,
+  Trash2,
   Zap
 } from 'lucide-react'
 import type { JavaInfo } from '@shared/types'
@@ -26,6 +29,7 @@ import { useApp } from '../store'
 import { PageHeader } from '../components/Page'
 import { Spinner } from '../components/Bits'
 import { downloadSourceLabel } from '../lib'
+import { THEMES } from '../theme'
 
 function Toggle({
   checked,
@@ -131,6 +135,17 @@ export function SettingsPage(): React.JSX.Element {
     toast('Java 路径已更新', 'success')
   }
 
+  const chooseBackground = async (): Promise<void> => {
+    try {
+      const image = await window.blockdeck.settings.chooseBackground()
+      if (!image) return
+      await saveSettings({ customBackground: image })
+      toast('自定义背景已更新', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error')
+    }
+  }
+
   const installJava = async (major: number): Promise<void> => {
     const result = await runTask({ title: `安装 Java ${major}`, kind: 'java' }, (taskId) =>
       window.blockdeck.java.install(major, taskId)
@@ -216,6 +231,16 @@ export function SettingsPage(): React.JSX.Element {
                 </div>
               </SettingRow>
               <SettingRow
+                icon={<Layers3 size={17} />}
+                title="版本隔离"
+                description="开启后，每个版本使用独立的存档、设置与模组目录；已有全局存档不会自动迁移。"
+              >
+                <Toggle
+                  checked={settings.versionIsolation}
+                  onChange={(value) => void saveSettings({ versionIsolation: value })}
+                />
+              </SettingRow>
+              <SettingRow
                 icon={<MemoryStick size={17} />}
                 title="启动器数据目录"
                 description="账户加密文件、缓存和运行日志保存在此处。"
@@ -243,6 +268,98 @@ export function SettingsPage(): React.JSX.Element {
                   查看日志 <ChevronRight size={14} />
                 </button>
               </SettingRow>
+            </div>
+          </section>
+
+          <section className="settings-section panel appearance-section">
+            <div className="settings-section-head">
+              <span className="settings-section-icon">
+                <Palette size={18} />
+              </span>
+              <div>
+                <h2>外观与主题</h2>
+                <p>换一套配色，或者把自己的图片放在启动器背景里。</p>
+              </div>
+            </div>
+            <div className="theme-grid">
+              {THEMES.map((theme) => (
+                <button
+                  key={theme.id}
+                  className={`theme-card ${settings.theme === theme.id ? 'is-active' : ''}`}
+                  onClick={() => void saveSettings({ theme: theme.id })}
+                >
+                  <span className="theme-swatch" style={{ background: theme.preview }}>
+                    <span className="theme-swatch-dot" style={{ background: theme.accent }} />
+                  </span>
+                  <span className="theme-copy">
+                    <strong>{theme.name}</strong>
+                    <small>{theme.tagline}</small>
+                  </span>
+                  {settings.theme === theme.id ? <Check size={15} className="theme-check" /> : null}
+                </button>
+              ))}
+            </div>
+            <div className="setting-list appearance-settings">
+              <SettingRow
+                icon={<ImagePlus size={17} />}
+                title="自定义背景"
+                description="支持 PNG / JPG / WebP，自动压缩后保存在本机设置中。"
+                stacked
+              >
+                <div className="background-editor">
+                  <div
+                    className={`background-thumb ${settings.customBackground ? 'has-image' : ''}`}
+                    style={
+                      settings.customBackground
+                        ? { backgroundImage: `url("${settings.customBackground}")` }
+                        : undefined
+                    }
+                  >
+                    {settings.customBackground ? null : <ImagePlus size={20} />}
+                  </div>
+                  <div className="background-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => void chooseBackground()}>
+                      选择图片
+                    </button>
+                    {settings.customBackground ? (
+                      <button
+                        className="btn btn-ghost btn-sm danger-text"
+                        onClick={() => void saveSettings({ customBackground: '' })}
+                      >
+                        <Trash2 size={13} /> 移除
+                      </button>
+                    ) : (
+                      <span className="background-hint">使用主题背景</span>
+                    )}
+                  </div>
+                </div>
+              </SettingRow>
+              {settings.customBackground ? (
+                <SettingRow
+                  icon={<SlidersHorizontal size={17} />}
+                  title="背景遮罩"
+                  description="加深遮罩可以让面板与文字更清晰。"
+                >
+                  <div className="range-control">
+                    <input
+                      type="range"
+                      min={0.15}
+                      max={0.9}
+                      step={0.05}
+                      value={settings.backgroundDim}
+                      onChange={(event) =>
+                        void saveSettings({ backgroundDim: Number(event.target.value) })
+                      }
+                      style={
+                        {
+                          '--range-progress': `${((settings.backgroundDim - 0.15) / 0.75) * 100}%`
+                        } as React.CSSProperties
+                      }
+                    />
+                    <span className="range-value">{Math.round(settings.backgroundDim * 100)}%</span>
+                  </div>
+                </SettingRow>
+              ) : null}
             </div>
           </section>
 
@@ -433,7 +550,7 @@ export function SettingsPage(): React.JSX.Element {
                 <strong>BlockDeck</strong>
                 <span>方块工坊启动器</span>
               </div>
-              <span className="about-version">v{appInfo?.version ?? '1.1.0'}</span>
+              <span className="about-version">v{appInfo?.version ?? '1.2.1'}</span>
             </div>
             <div className="about-grid">
               <span>Electron</span>

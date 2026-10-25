@@ -12,7 +12,8 @@ import {
   extractNatives,
   mergeVersion,
   planLibraries,
-  rulesAllow
+  rulesAllow,
+  isolatedGameDir
 } from './minecraft'
 import { ensureDir, pathExists } from './util'
 
@@ -93,6 +94,8 @@ export async function buildLaunchCommand(
   await ensureDir(tempDir)
 
   const classpath = [...planned.classpath, merged.clientJar].join(path.delimiter)
+  const instanceDir = isolatedGameDir(settings, merged.id, merged.isolated)
+  await ensureDir(instanceDir)
   const assetRoot = path.join(settings.gameDir, 'assets')
   const virtualAssets = merged.assetIndex?.virtual
     ? path.join(assetRoot, 'virtual', merged.assetIndex.id)
@@ -101,7 +104,7 @@ export async function buildLaunchCommand(
   const replacements: Record<string, string> = {
     auth_player_name: account.name,
     version_name: merged.id,
-    game_directory: settings.gameDir,
+    game_directory: instanceDir,
     assets_root: assetRoot,
     game_assets: virtualAssets,
     assets_index_name: merged.assetIndex?.id ?? merged.assets ?? 'legacy',
@@ -116,7 +119,7 @@ export async function buildLaunchCommand(
     version_type: merged.type,
     natives_directory: merged.nativesDir,
     launcher_name: 'BlockDeck',
-    launcher_version: '1.1.0',
+    launcher_version: '1.2.1',
     classpath,
     classpath_separator: path.delimiter,
     library_directory: path.join(settings.gameDir, 'libraries'),
@@ -168,7 +171,7 @@ export async function buildLaunchCommand(
     '-Dsun.stdout.encoding=UTF-8',
     '-Dsun.stderr.encoding=UTF-8',
     '-Dminecraft.launcher.brand=BlockDeck',
-    '-Dminecraft.launcher.version=1.1.0',
+    '-Dminecraft.launcher.version=1.2.1',
     ...jvmTokens.filter(
       (token) =>
         !token.startsWith('-Xms') &&
@@ -183,7 +186,7 @@ export async function buildLaunchCommand(
   return {
     javaPath: java.path,
     args,
-    cwd: settings.gameDir,
+    cwd: instanceDir,
     versionId: merged.id,
     mainClass: merged.mainClass
   }

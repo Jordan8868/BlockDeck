@@ -34,7 +34,7 @@ fs.writeFileSync(
     {
       name: 'blockdeck',
       productName: 'BlockDeck',
-      version: '1.1.0',
+      version: '1.2.1',
       description: '方块工坊 BlockDeck - Minecraft Java 版启动器',
       main: 'out/main/index.js',
       author: 'BlockDeck',
@@ -77,8 +77,8 @@ try {
     },
     true
   )
-  versionInfo.setFileVersion('1.1.0.0')
-  versionInfo.setProductVersion('1.1.0.0')
+  versionInfo.setFileVersion('1.2.1.0')
+  versionInfo.setProductVersion('1.2.1.0')
   versionInfo.outputToResourceEntries(res.entries)
   res.outputResource(exe)
   fs.writeFileSync(appExe, Buffer.from(exe.generate()))
@@ -139,7 +139,7 @@ fs.writeFileSync(
   'utf8'
 )
 
-const zipPath = path.join(outDir, 'BlockDeck-1.1.0-Portable-win64.zip')
+const zipPath = path.join(outDir, 'BlockDeck-1.2.1-Portable-win64.zip')
 console.log('[package] creating zip...')
 const zip = spawnSync('python', [path.join(cwd, 'scripts', 'zip.py'), appDir, zipPath], {
   encoding: 'utf8',
@@ -168,7 +168,7 @@ if (makensis) {
     env: { ...process.env, TEMP: tempDir, TMP: tempDir }
   })
   if (setup.status === 0) {
-    console.log('[package] installer created:', path.join(outDir, 'BlockDeck-1.1.0-Setup.exe'))
+    console.log('[package] installer created:', path.join(outDir, 'BlockDeck-1.2.1-Setup.exe'))
   } else {
     console.warn('[package] installer build failed:', setup.stdout, setup.stderr)
   }

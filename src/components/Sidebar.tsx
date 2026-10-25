@@ -91,6 +91,7 @@ export function Sidebar(): React.JSX.Element {
               name={activeAccount.name}
               uuid={activeAccount.uuid}
               skinUrl={activeAccount.skinUrl}
+              customSkin={activeAccount.customSkin}
               size={38}
             />
             <span className="account-card-copy">
@@ -118,7 +119,7 @@ export function Sidebar(): React.JSX.Element {
           <ScrollText size={15} />
           <span>运行日志</span>
         </button>
-        <span className="sidebar-version">v{appInfo?.version ?? '1.1.0'}</span>
+        <span className="sidebar-version">v{appInfo?.version ?? '1.2.1'}</span>
       </div>
     </aside>
   )

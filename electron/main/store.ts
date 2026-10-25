@@ -13,7 +13,11 @@ const defaultSettings = (): LauncherSettings => ({
   downloadSource: 'auto',
   maxConcurrent: 8,
   minimizeOnLaunch: false,
-  showSnapshots: false
+  showSnapshots: false,
+  versionIsolation: false,
+  theme: 'lime',
+  customBackground: '',
+  backgroundDim: 0.72
 })
 
 interface StoredAccount extends Omit<Account, 'accessToken' | 'refreshToken'> {
@@ -47,6 +51,13 @@ export async function updateSettings(patch: Partial<LauncherSettings>): Promise<
   if (next.maxConcurrent < 1) next.maxConcurrent = 1
   if (next.maxConcurrent > 16) next.maxConcurrent = 16
   if (!['auto', 'official', 'mirror'].includes(next.downloadSource)) next.downloadSource = 'auto'
+  if (!['lime', 'ocean', 'sunset', 'violet', 'sakura', 'mono'].includes(next.theme)) next.theme = 'lime'
+  if (typeof next.customBackground !== 'string' || !next.customBackground.startsWith('data:image/')) {
+    next.customBackground = ''
+  }
+  if (next.customBackground.length > 12 * 1024 * 1024) next.customBackground = ''
+  next.backgroundDim = Math.max(0, Math.min(0.9, Number(next.backgroundDim) || 0.55))
+  next.versionIsolation = Boolean(next.versionIsolation)
   settingsCache = next
   await writeJson(getSettingsPath(), next)
   if (next.gameDir) {
@@ -128,6 +139,8 @@ export async function getPublicAccountState(): Promise<AccountState> {
     name: account.name,
     uuid: account.uuid,
     skinUrl: account.skinUrl,
+    customSkin: account.customSkin,
+    skinModel: account.skinModel,
     expired: account.type === 'microsoft' && !!account.expiresAt && account.expiresAt < now,
     createdAt: account.createdAt
   }))
